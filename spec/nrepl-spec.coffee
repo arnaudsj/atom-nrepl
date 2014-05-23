@@ -12,9 +12,6 @@ describe "nrepl", ->
     waitsFor (done) ->
       setUpFakeProjectDir (path) ->
         client = new FakeNreplClient()
-
-
-
         directory = new Directory(path)
         workspaceView = new WorkspaceView
         editorView = setUpActiveEditorView(workspaceView)
@@ -72,6 +69,36 @@ describe "nrepl", ->
       it "displays an error message", ->
         outputView = workspaceView.find("#nrepl-output")
         expect(outputView.text()).toBe("Connection Error - Could not find nrepl port file.")
+
+  describe "when no text is selected", ->
+    subject = ->
+      runs ->
+        spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([3, 3], [3, 3]))
+        workspaceView.trigger('nrepl:eval')
+      waits 5
+    describe "when a REPL is running", ->
+      fakePort = 41235
+
+      beforeEach ->
+        waitsFor (done) ->
+          setUpFakePortFile(directory.path, fakePort, done)
+        subject()
+
+      describe "when the connection succeeds", ->
+        beforeEach ->
+          client.simulateConnectionSucceeding()
+
+        it "should find the enclosing expression", ->
+          client.simulateEvaluationSucceeding(
+            """
+            (ns the-first.namespace)
+            (the second expression)
+            """,
+            ["nil", ":the-first-value"])
+
+          outputView = workspaceView.find("#nrepl-output")
+          expect(outputView.eq(0).text()).toBe(":the-first-value")
+
 
 # helpers
 
