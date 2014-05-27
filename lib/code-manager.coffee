@@ -1,3 +1,4 @@
+{Range} = require 'atom'
 _ = require 'underscore'
 DEFAULT_NAMESPACE = "user"
 
@@ -8,13 +9,33 @@ class CodeManager
   currentExpressionWithNamespace: ->
     editor = @workspaceView.getActiveView().editor
     range = currentExpressionRange(editor)
-    unless range.isEmpty()
-      expression = expressionInRange(range, editor)
-    else
-      expression = selectEnclosingExpression(editor, range)
+
+    # If no text is selected we find the enclosing s-expression
+    if range.isEmpty()
+      # If we're at the start or end of the line we move inwards to find the
+      # enclosing s-expression
+      if startOfLine(range.start, editor)
+        range = new Range([range.start.row, 1], [range.start.row, 1])
+      else if endOfLine(range.end, editor)
+        range = new Range([range.start.row, range.end.column - 1], [range.start.row, range.end.column - 1])
+
+      range = selectEnclosingExpression(editor, range)
+
+    return unless range
+
+    expression = expressionInRange(range, editor)
 
     namespace = namespaceForRange(range, editor)
     [namespaceCall(namespace), expression].join("\n")
+
+  endOfLastSelectedLine: ->
+    editor = @workspaceView.getActiveView().editor
+    range = currentExpressionRange(editor)
+    row = if range.end.column == 0 then range.end.row - 1 else range.end.row
+    column = lineLength(row, editor)
+
+    [row, column]
+
 
 namespaceForRange = (range, editor) ->
   buffer = editor.getBuffer();
@@ -31,14 +52,54 @@ expressionInRange = (range, editor) ->
 namespaceCall = (namespace) ->
   "(ns #{namespace})"
 
+startOfLine = (point, editor) ->
+  point.column == 0
+
+endOfLine = (point, editor) ->
+  lineLength(point.row, editor) == point.column
+
+lineLength = (row, editor) ->
+  editor.lineLengthForBufferRow(row)
+
+findStartOfExpression = (cursor, editor) ->
+  endBrackets = 0
+  expressionStart = null
+  beforeRange = [[0, 0], [cursor.start.row, cursor.start.column]]
+  editor.getBuffer().backwardsScanInRange /[\(\)]/g, beforeRange, ({match, range, stop}) ->
+    switch match[0]
+      when ")" then endBrackets++
+      when "("
+        if endBrackets == 0
+          expressionStart = range.start
+          stop()
+        else
+          endBrackets--
+  expressionStart
+
+findEndOfExpression = (cursor, editor) ->
+  startBrackets = 0
+  expressionEnd = null
+  afterRange = [[cursor.start.row, cursor.start.column], [editor.getLastBufferRow(), null]]
+  editor.getBuffer().scanInRange /[\(\)]/g, afterRange, ({match, range, stop}) ->
+    switch match[0]
+      when "(" then startBrackets++
+      when ")"
+        if startBrackets == 0
+          expressionEnd = range.end
+          stop()
+        else
+          startBrackets--
+  expressionEnd
+
 selectEnclosingExpression = (editor, range) ->
   # find start of s-expression
-  beforeText = editor.getTextInBufferRange([[0, 0], [range.start.row, range.start.column]])
-  beforeMatch = /.*(\(.*)$/.exec beforeText
+  expressionStart = findStartOfExpression(range, editor)
 
   # find end of s-expression
-  afterText = editor.getTextInBufferRange([[range.start.row, range.start.column], [editor.getLastBufferRow(), null]])
-  afterMatch = /^(.*?\)).*/.exec afterText
+  expressionEnd = findEndOfExpression(range, editor)
 
-  if beforeMatch and afterMatch
-    beforeMatch[0] + afterMatch[0]
+  if expressionStart and expressionEnd
+    # highlight text
+    expressionRange = new Range(expressionStart, expressionEnd)
+    editor.setSelectedBufferRange(expressionRange)
+    expressionRange
