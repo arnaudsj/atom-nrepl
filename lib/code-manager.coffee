@@ -79,8 +79,10 @@ findStartOfExpression = (cursor, editor) ->
 findEndOfExpression = (cursor, editor) ->
   startBrackets = 0
   expressionEnd = null
-  afterRange = [[cursor.start.row, cursor.start.column], [editor.getLastBufferRow(), null]]
-  editor.getBuffer().scanInRange /[\(\)]/g, afterRange, ({match, range, stop}) ->
+  buffer = editor.getBuffer()
+  afterRange = [[cursor.start.row, cursor.start.column],
+                [editor.getLastBufferRow(), buffer.getLastLine().length]]
+  buffer.scanInRange /[\(\)]/g, afterRange, ({match, range, stop}) ->
     switch match[0]
       when "(" then startBrackets++
       when ")"
