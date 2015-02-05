@@ -10,7 +10,6 @@ class Controller
     @outputView = new OutputView()
 
   start: ->
-    @outputView.appendTo(@workspaceView)
     @workspaceView.command "nrepl:eval", =>
       @evalCurrentExpression()
 
@@ -20,8 +19,16 @@ class Controller
 
   evalCurrentExpression: ->
     expression = @codeManager.currentExpressionWithNamespace()
-    @session.evaluate expression, (err, values) =>
-      if err
-        @outputView.showError(err)
-      else
-        @outputView.showValues(values.slice(1))
+    if expression and expression.trim().length > 0
+      endOfLine = @codeManager.endOfLastSelectedLine()
+      view = @workspaceView.getActiveView()
+      view.appendToLinesView(@outputView)
+
+      pos = @workspaceView.getActiveView().pixelPositionForBufferPosition(endOfLine)
+      @outputView.showSpinner(pos)
+
+      @session.evaluate expression, (err, values) =>
+        if err
+          @outputView.showError(err, pos)
+        else
+          @outputView.showValue(values.slice(1)[0], pos)

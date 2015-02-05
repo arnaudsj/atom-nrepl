@@ -12,9 +12,6 @@ describe "nrepl", ->
     waitsFor (done) ->
       setUpFakeProjectDir (path) ->
         client = new FakeNreplClient()
-
-
-
         directory = new Directory(path)
         workspaceView = new WorkspaceView
         editorView = setUpActiveEditorView(workspaceView)
@@ -32,46 +29,88 @@ describe "nrepl", ->
         controller.start()
         done()
 
-  describe "evaluating a selected expression", ->
-    subject = ->
-      runs ->
-        spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([3, 0], [4, 0]))
-        workspaceView.trigger('nrepl:eval')
-      waits 5
+  describe "when a REPL is running", ->
+    fakePort = 41235
 
-    describe "when a REPL is running", ->
-      fakePort = 41235
+    beforeEach ->
+      waitsFor (done) ->
+        setUpFakePortFile(directory.path, fakePort, done)
 
+    describe "an expression is selected", ->
       beforeEach ->
-        waitsFor (done) ->
-          setUpFakePortFile(directory.path, fakePort, done)
-        subject()
+        runs ->
+          spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([3, 0], [4, 0]))
+          workspaceView.trigger('nrepl:eval')
+        waits 5
 
-      it "connects to the port specified in the port file", ->
-        expect(client.connectedPort).toBe(fakePort)
+      it "displays the value of selected expression, evaluated in the right namespace", ->
+        client.simulateConnectionSucceeding()
+        client.simulateEvaluationSucceeding(
+          """
+          (ns the-first.namespace)
+          (the second expression)\n
+          """,
+          ["nil", ":the-first-value"])
 
-      describe "when the connection succeeds", ->
-        beforeEach ->
-          client.simulateConnectionSucceeding()
+        outputView = editorView.find(".nrepl-output:first")
+        expect(outputView.eq(0).text()).toBe(":the-first-value")
 
-        it "displays the value of selected expression, evaluated in the right namespace", ->
-          client.simulateEvaluationSucceeding(
-            """
-            (ns the-first.namespace)
-            (the second expression)\n
-            """,
-            ["nil", ":the-first-value"])
-
-          outputView = workspaceView.find("#nrepl-output")
-          expect(outputView.eq(0).text()).toBe(":the-first-value")
-
-    describe "when no REPL is running", ->
+    describe "nothing is selected", ->
       beforeEach ->
-        subject()
+        runs ->
+          spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([2, 3], [2, 3]))
+          workspaceView.trigger('nrepl:eval')
+        waits 5
 
-      it "displays an error message", ->
-        outputView = workspaceView.find("#nrepl-output")
-        expect(outputView.text()).toBe("Connection Error - Could not find nrepl port file.")
+      it "selects the enclosing expression", ->
+        client.simulateConnectionSucceeding()
+        client.simulateEvaluationSucceeding(
+          """
+          (ns the-first.namespace)
+          (the first expression)
+          """,
+          ["nil", ":the-first-value"])
+
+        outputView = editorView.find(".nrepl-output:first")
+        expect(outputView.eq(0).text()).toBe(":the-first-value")
+
+    describe "the cursor is at the beginning of a line", ->
+      beforeEach ->
+        runs ->
+          spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([3, 0], [3, 0]))
+          workspaceView.trigger('nrepl:eval')
+        waits 5
+
+      it "selects the expression that starts on that line", ->
+        client.simulateConnectionSucceeding()
+        client.simulateEvaluationSucceeding(
+          """
+          (ns the-first.namespace)
+          (the second expression)
+          """,
+          ["nil", ":the-first-value"])
+
+        outputView = editorView.find(".nrepl-output:first")
+        expect(outputView.eq(0).text()).toBe(":the-first-value")
+
+    describe "the cursor is at the end of a line", ->
+      beforeEach ->
+        runs ->
+          spyOn(editorView.editor, 'getSelectedBufferRange').andReturn(new Range([3, 23], [3, 23]))
+          workspaceView.trigger('nrepl:eval')
+        waits 5
+
+      it "selects the expression that ends on that line", ->
+        client.simulateConnectionSucceeding()
+        client.simulateEvaluationSucceeding(
+          """
+          (ns the-first.namespace)
+          (the second expression)
+          """,
+          ["nil", ":the-first-value"])
+
+        outputView = editorView.find(".nrepl-output:first")
+        expect(outputView.eq(0).text()).toBe(":the-first-value")
 
 # helpers
 
@@ -84,5 +123,5 @@ setUpFakeProjectDir = (f) ->
   temp.mkdir("atom-nrepl-test", (err, path) -> f(path))
 
 setUpFakePortFile = (path, port, f) ->
-    fs.mkdir "#{path}/target", ->
-      fs.writeFile("#{path}/target/repl-port", port.toString(), f)
+  fs.mkdir "#{path}/target", ->
+    fs.writeFile("#{path}/target/repl-port", port.toString(), f)

@@ -4,22 +4,29 @@ _ = require 'underscore'
 module.exports =
 class OutputView extends View
   @content: ->
-    @div id: 'nrepl-output', class: 'overlay from-top', click: 'hide', =>
-      @ol outlet: 'messages'
-      @span outlet: 'valueList', class: 'message'
+    @div class: 'nrepl-output', click: 'hide', =>
+      @div outlet: 'value', class: 'message'
 
   initialize: ->
     @hide()
 
-  showError: (error) ->
+  showSpinner: (pos) ->
+    @setPosition(pos)
     @show()
-    @valueList.empty()
-    @valueList.append View.render ->
-      @li class: 'text-error', error.type + " - " + error.message
+    @value.html View.render ->
+      @span class: 'nrepl-spinner'
 
-  showValues: (values) ->
+  showError: (error, pos) ->
+    @setPosition(pos)
     @show()
-    @valueList.empty()
-    for value in values
-      @valueList.append View.render ->
-        @li class: 'block', value
+    @value.html View.render ->
+      @span class: 'text-error', error.type + " - " + error.message
+
+  setPosition: (pos) ->
+    @css left: pos.left, top: pos.top
+
+  showValue: (value, pos) ->
+    @setPosition(pos)
+    @show()
+    @value.html View.render ->
+      @span class: 'block', value
